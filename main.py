@@ -2,6 +2,7 @@ import logging
 import secrets
 import uuid
 import aiortc as aio
+import asyncio
 from flask import Flask, render_template, request, make_response, jsonify
 from flask_cors import CORS
 
@@ -9,9 +10,9 @@ import exception_handler
 from my_media_transform_check import AudioTransformTrack, VideoTransformTrack
 from settings import Settings
 
-settings = Settings()
+# settings = Settings()
 app = Flask(__name__, static_folder="./build/static", template_folder="./build/templates/")
-CORS(app) # Cross Origin Resource Sharing
+CORS(app)  # Cross Origin Resource Sharing
 
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
@@ -21,10 +22,14 @@ exception_handler.init_app(app)
 # このアプリケーションのログ設定
 root_logger = logging.getLogger("app")
 root_logger.addHandler(logging.StreamHandler())
-root_logger.setLevel(settings.LOG_LEVEL)
+# root_logger.setLevel(settings.LOG_LEVEL)
 
 pcs = set()
 dcs = set()
+
+# 独自のイベントループを作成
+event_loop = asyncio.new_event_loop()
+asyncio.set_event_loop(event_loop)
 
 
 @app.route("/", methods=["GET"])
@@ -87,12 +92,12 @@ def offer():
             await aio.recorder.stop()
 
     # handle offer
-    aio.run(pc.setRemoteDescription(offer))
-    aio.run(aio.recorder.start())
+    event_loop.run_until_complete(pc.setRemoteDescription(offer))
+    event_loop.run_until_complete(aio.recorder.start())
 
     # send answer
-    answer = aio.run(pc.createAnswer())
-    aio.run(pc.setLocalDescription(answer))
+    answer = event_loop.run_until_complete(pc.createAnswer())
+    event_loop.run_until_complete(pc.setLocalDescription(answer))
 
     return jsonify(
         {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type},
@@ -111,7 +116,7 @@ def message():
 def on_shutdown(exception=None):
     # close peer connections
     coros = [pc.close() for pc in pcs]
-    aio.run(aio.asyncio.gather(*coros))
+    event_loop.run_until_complete(asyncio.gather(*coros))
     pcs.clear()
 
 
